@@ -5,9 +5,11 @@
  *  Author: kobethuy
  */
 
-#include <curses.h>
-#include <stdlib.h>
-#include <strings.h>
+#include <curses.h> // GUI
+#include <time.h> // time()
+#include <stdlib.h> // malloc()
+#include <unistd.h> // getopt()
+#include <strings.h> // strlen()
 
 /* Direction. */
 typedef enum {
@@ -17,8 +19,8 @@ typedef enum {
 	dRIGHT
 } dtype;
 
-int **board;
-int boardSize, width = 21, height = 18, score = 0, hiscore = 0; // "score" to be implemented.
+char *usage = "Use \"w,a,s,d\" to move tiles, \"q\" to exit.";
+int **board, boardSize, width = 21, height = 18, score = 0, hiscore; // "score" to be implemented.
 
 int powerOf2(int a) {
 	if (a == 0) {
@@ -28,11 +30,46 @@ int powerOf2(int a) {
 	}
 }
 
+int getHiScore() {
+	FILE *fd;
+	int a;
+	if ((fd = fopen("hiscore.txt", "r")) == NULL) {
+		fd = fopen("hiscore.txt", "w+");
+	}
+
+	fscanf(fd, "%d", &a);
+	fclose(fd);
+	return a;
+}
+
+void setHiScore(int score) {
+
+	if (score > hiscore) {
+		hiscore = score;
+		FILE *fd = fopen("hiscore.txt", "w+");
+		fprintf(fd, "%d", hiscore);
+		fclose(fd);
+	}
+}
+
 int logOf2(int a) {
 	int foo = 0;
 	while ((powerOf2(foo)) != a)
 		foo++;
 	return foo;
+}
+
+int checkMove() {
+    int i, j;
+    for (i = 0; i < 4; i++) {
+    	for (j = 0; j < 4; j++) {
+    		if (!board[i][j]
+						  || ((i + 1 < 4) && (board[i][j] == board[i + 1][j]))
+						  || ((j + 1 < 4) && (board[i][j] == board[i][j + 1])))
+    			return 1;
+    	}
+    }
+    return 0;
 }
 
 void slide(dtype dir) {
@@ -196,7 +233,7 @@ void initBoard() {
 	}
 }
 
-void spawnTile(WINDOW* wn) {
+void spawnTile() {
 
 	/* Randomize starting position. */
 	int x = rand() % 4, y = rand() % 4, z;
@@ -271,6 +308,7 @@ void drawBoard(WINDOW *wn) {
 	}
 	waddch(wn, ACS_LRCORNER);
 	mvwprintw(wn, height - 2, 0, "SCORE: %d", score);
+	hiscore = getHiScore();
 	mvwprintw(wn, height - 1, 0, "HIGHSCORE: %d", hiscore);
 
 }
@@ -310,7 +348,7 @@ void game(WINDOW* wn) {
 	while (1) {
 
 		if (move == 0) {
-			spawnTile(wn);
+			spawnTile();
 			drawBoard(wn);
 		}
 
@@ -336,6 +374,7 @@ void game(WINDOW* wn) {
 			break;
 
 		case 'q':
+		case 27:
 			return;
 			break;
 
@@ -343,11 +382,34 @@ void game(WINDOW* wn) {
 			goto input;
 			break;
 		}
+
+		if (!checkMove()) {
+
+			wgetch(wn);
+
+			werase(wn);
+
+			mvwprintw(wn, 0, 0, "YOU LOSE !!!");
+
+			wgetch(wn);
+			mvwprintw(wn, 1, 0, "Try again ? Y/N");
+
+			ret:;
+			char retry = wgetch(wn);
+
+			if (retry == 'y' || retry == 'Y') {
+				setHiScore(score);
+				initBoard();
+				game(wn);
+			} else if (retry == 'n' || retry == 'N'){
+				werase(wn);
+				setHiScore(score);
+				return;
+			} else {
+				goto ret;
+			}
+		}
 	}
-
-}
-
-void highScore() {
 
 }
 
@@ -359,12 +421,14 @@ void menu(WINDOW* wn) {
 	werase(wn);
 	while (1) {
 		switch(choice){
+
 			case 'w':
 				wattron(wn, COLOR_PAIR(12));
 				mvwprintw(wn, 0, 0,"%s", startGame);
 				wattroff(wn, COLOR_PAIR(12));
 				mvwprintw(wn, 1, 0,"%s", hiScore);
 				break;
+
 			case 's':
 				mvwprintw(wn, 0, 0,"%s", startGame);
 				wattron(wn, COLOR_PAIR(12));
@@ -373,12 +437,17 @@ void menu(WINDOW* wn) {
 				break;
 			case '\n':
 				if (enter == 'w') {
+
 					game(wn);
+
 				} else {
-					highScore();
+					werase(wn);
+					wprintw(wn, "%d", getHiScore());
 				}
 				break;
 			case 'q':
+			case 27:
+				setHiScore(score);
 				werase(wn);
 				mvwprintw(wn, 0, 0, "Exitting...");
 				wgetch(wn);
@@ -392,6 +461,7 @@ void menu(WINDOW* wn) {
 				break;
 
 		}
+
 		enter = choice;
 		choice = wgetch(wn);
 
@@ -400,16 +470,27 @@ void menu(WINDOW* wn) {
 
 int main(int argc, char **argv) {
 
+	char args = getopt(argc, argv, "h");
+
+	if (args == 'h') {
+		printf("%s\n", usage);
+		exit(0);
+	}
+
 	initscr();
 	cbreak();
 	noecho();
 	curs_set(false);
+
 	srand((unsigned int)time(NULL));
+
+	hiscore = 0;
 
 	boardSize = 4;
 	initBoard();
 
 	WINDOW *wn = newwin(height, width, 4, 30);
+	keypad(wn, TRUE);
 
 	if (initColor()) {
 		wprintw(wn, "Terminal does not support color.\n");
