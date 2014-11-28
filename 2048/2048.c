@@ -1,15 +1,15 @@
-/*
+/**
  * 	2048.c
  *
  *  Created on: Nov 2, 2014
  *  Author: kobethuy
  */
 
-#include <curses.h> // GUI
-#include <time.h> // time()
-#include <stdlib.h> // malloc()
-#include <unistd.h> // getopt()
-#include <strings.h> // strlen()
+#include <curses.h> 	// GUI
+#include <time.h> 		// time(), localtime(), struct tm
+#include <stdlib.h> 	// malloc()
+#include <unistd.h> 	// getopt()
+#include <strings.h> 	// strlen()
 
 /* Direction. */
 typedef enum {
@@ -19,10 +19,47 @@ typedef enum {
 	dRIGHT
 } dtype;
 
-char *usage = "Use \"w,a,s,d\" to move tiles, \"q\" to exit.";
-int **board, boardSize, width = 21, height = 18, score = 0, hiscore; // "score" to be implemented.
+struct Highscore {
+	char *name;
+	int score;
+	char *time;
+};
 
+char *usage = 		"Use \"w,a,s,d\" to move tiles, \"q\" to exit.",							\
+	 *menuOpt[5] = {"Start game", "High scores", "Credits", "Quit", "Continue"},				\
+	 *member = 		"Name: Nguyen Trung Dang Thuy\nID: s3509547\nEmail: s3509547@rmit.edu.vn";
+
+struct Highscore hs[10]; // High score list.
+
+int **board,		\
+	boardSize,		\
+	width = 21,		\
+	height = 20,	\
+	score = 0,		\
+	hiscore = 0,	\
+	winGoal = 2048,	\
+	start = 0,		\
+	win = 0,		\
+	usrRetry = 0;
+
+/**
+ * Function prototypes.
+ *
+ */
+
+void cleanUp();
+void initHiScore(struct Highscore hs[]);
+void getHiScore(struct Highscore hs[]);
+void setHiScore(struct Highscore hs[]);
+
+/**
+ * Return the power of 2 of a given number.
+ *
+ * @param a The number to compute.
+ * @return	2 ^ a.
+ */
 int powerOf2(int a) {
+
 	if (a == 0) {
 		return 1;
 	} else {
@@ -30,28 +67,12 @@ int powerOf2(int a) {
 	}
 }
 
-int getHiScore() {
-	FILE *fd;
-	int a;
-	if ((fd = fopen("hiscore.txt", "r")) == NULL) {
-		fd = fopen("hiscore.txt", "w+");
-	}
-
-	fscanf(fd, "%d", &a);
-	fclose(fd);
-	return a;
-}
-
-void setHiScore(int score) {
-
-	if (score > hiscore) {
-		hiscore = score;
-		FILE *fd = fopen("hiscore.txt", "w+");
-		fprintf(fd, "%d", hiscore);
-		fclose(fd);
-	}
-}
-
+/**
+ * Return the logarithm of a number.
+ *
+ * @param a The number to compute.
+ * @return log2(a).
+ */
 int logOf2(int a) {
 	int foo = 0;
 	while ((powerOf2(foo)) != a)
@@ -59,6 +80,27 @@ int logOf2(int a) {
 	return foo;
 }
 
+/**
+ * Check for winning condition.
+ *
+ * @return 1 if there exist a tile that match the winning goal. 0 otherwise.
+ */
+int winCheck() {
+	for (int a = 0; a < 4; a++) {
+		for (int b = 0; b < 4; b++) {
+			if (board[a][b] == winGoal)
+				return 1;
+		}
+	}
+	return 0;
+}
+
+
+/**
+ * Check for available move on the board.
+ *
+ * @return 1 if there is an available move. 0 otherwise.
+ */
 int checkMove() {
     int i, j;
     for (i = 0; i < 4; i++) {
@@ -72,6 +114,11 @@ int checkMove() {
     return 0;
 }
 
+/**
+ * Slide all tile in the given direction.
+ *
+ * @param dir The direction to slide.
+ */
 void slide(dtype dir) {
 
 	switch (dir) {
@@ -141,6 +188,11 @@ void slide(dtype dir) {
 	}
 }
 
+/**
+ * Join tiles in given direction.
+ *
+ * @param dir The direction to join.
+ */
 void join(dtype dir) {
 
 	switch(dir) {
@@ -152,6 +204,7 @@ void join(dtype dir) {
 						board[foo][bar] += board[foo][bar];
 						board[foo][bar + 1] = 0;
 						score += board[foo][bar];
+
 					}
 
 				}
@@ -197,6 +250,12 @@ void join(dtype dir) {
 	}
 }
 
+/**
+ * General function to simulate a "move".
+ *
+ * @param dir The direction to move.
+ * @return 1 if there if no available move. 0 otherwise.
+ */
 int moveTile(dtype dir) {
 
 	int dummy[4][4], count = 0;
@@ -208,7 +267,9 @@ int moveTile(dtype dir) {
 	}
 
 	slide(dir);
+
 	join(dir);
+
 	slide(dir);
 
 	for (int a = 0; a < 4; a++) {
@@ -217,10 +278,19 @@ int moveTile(dtype dir) {
 				count++;
 		}
 	}
+
+	if (winCheck())
+		win = 1;
+
 	if (count == 16)
 		return 1;
+
 	return 0;
 }
+
+/**
+ * Initialize the game board.
+ */
 void initBoard() {
 
 	board = malloc(sizeof(int*) * 4);
@@ -233,6 +303,9 @@ void initBoard() {
 	}
 }
 
+/**
+ * Generate random tile.
+ */
 void spawnTile() {
 
 	/* Randomize starting position. */
@@ -250,6 +323,11 @@ void spawnTile() {
 	board[x][y] = z;
 }
 
+/**
+ * Draw the gameboard.
+ *
+ * @param wn The active window to draw.
+ */
 void drawBoard(WINDOW *wn) {
 
 	int a = 0, b = 0, x_cor = 0, y_cor = 0;
@@ -266,7 +344,7 @@ void drawBoard(WINDOW *wn) {
 	a = 0;
 	waddch(wn, ACS_URCORNER);
 
-	while (a < (height - 5)) {
+	while (a < (height - 7)) {
 
 		/* Left side border. */
 		waddch(wn, ACS_VLINE);
@@ -308,11 +386,323 @@ void drawBoard(WINDOW *wn) {
 	}
 	waddch(wn, ACS_LRCORNER);
 	mvwprintw(wn, height - 2, 0, "SCORE: %d", score);
-	hiscore = getHiScore();
+	getHiScore(hs);
+	hiscore = hs[0].score;
 	mvwprintw(wn, height - 1, 0, "HIGHSCORE: %d", hiscore);
 
 }
 
+/**
+ * Clear the active window.
+ *
+ * @param wn The active window to clear.
+ */
+void clearWn(WINDOW* wn) {
+	wgetch(wn);
+	werase(wn);
+	mvwprintw(wn, 0, 0, "Press any key...");
+	wgetch(wn);
+	werase(wn);
+}
+
+/**
+ * View the highscore.
+ */
+void viewHiScore() {
+
+	WINDOW* wnHiScore = newwin(24, 80, 4, 30);
+
+	/* Proper formatting */
+	mvwprintw(wnHiScore, 0, 0, "#");
+	mvwprintw(wnHiScore, 0, 3, "Name");
+	mvwprintw(wnHiScore, 0, 14, "Score");
+	mvwprintw(wnHiScore, 0, 25, "Time");
+	for (int i = 0; i < 10; i++) {
+		mvwprintw(wnHiScore, i + 1, 0, "%d", i + 1);
+		mvwprintw(wnHiScore, i + 1, 2, ".");
+		mvwprintw(wnHiScore, i + 1, 3, "%s", hs[i].name);
+		mvwprintw(wnHiScore, i + 1, 14, "%d", hs[i].score);
+		mvwprintw(wnHiScore, i + 1, 25, "%s", hs[i].time);
+	}
+	/*-------------------*/
+
+	clearWn(wnHiScore);
+	endwin();
+}
+
+/**
+ * View the credit.
+ */
+void viewCredit() {
+
+	WINDOW* wnCredit = newwin(24, 80, 4, 30);
+	wprintw(wnCredit, "%s", member);
+	clearWn(wnCredit);
+	endwin();
+}
+
+/**
+ * Store highscore in formatted form.
+ *
+ * @param score The score to store.
+ */
+void storeHiScore(int score) {
+
+	char *name = malloc(sizeof(char) * 11), *timeLocal = malloc(sizeof(char) * 17);
+
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+
+	WINDOW* wnStoreHS = newwin(24, 80, 4, 30);
+
+	ret:;
+	mvwprintw(wnStoreHS, 0, 0, "Please enter your name: ");
+	wscanw(wnStoreHS, "%s", name);
+
+	if (strlen(name) == 0 || strlen(name) > 10)
+		goto ret;
+
+	sprintf(timeLocal, "%d:%d_%d/%d/%d", tm.tm_hour, tm.tm_min, tm.tm_mday, tm.tm_mon, tm.tm_year + 1900);
+
+	if (hs[9].score < score) {
+		hs[9].name = name;
+		hs[9].score = score;
+		hs[9].time = timeLocal;
+	}
+
+	setHiScore(hs);
+	clearWn(wnStoreHS);
+	endwin();
+}
+
+/**
+ * Game over window.
+ *
+ * @param wn The active window to show.
+ * @return 1 if the player doesn't retry. 0 otherwise.
+ */
+int gameOver(WINDOW* wn) {
+
+
+	mvwprintw(wn, 1, 0, "Try again ? Y/N");
+
+	ret:;
+	char retry = wgetch(wn);
+
+	if (retry == 'y' || retry == 'Y') {
+		score = 0;
+		start = 0;
+		return 0;
+	} else if (retry == 'n' || retry == 'N'){
+		werase(wn);
+		storeHiScore(score);
+		return 1;
+	} else {
+		werase(wn);
+		goto ret;
+	}
+
+}
+
+/**
+ * Game manager.
+ *
+ * @param wn The game window.
+ * @return -1 if the player quit the game. 1 if not retry. 0 otherwise.
+ */
+int game(WINDOW* wn) {
+
+	int move = 0;
+	while (1) {
+
+		if (move == 0) {
+			if (start == 0 || start == 1)
+				spawnTile();
+			drawBoard(wn);
+		}
+
+		input:;
+		int key = wgetch(wn);
+
+		switch (key) {
+
+		case KEY_UP:
+			move = moveTile(dUP);
+			break;
+
+		case KEY_DOWN:
+			move = moveTile(dDOWN);
+			break;
+
+		case KEY_LEFT:
+			move = moveTile(dLEFT);
+			break;
+
+		case KEY_RIGHT:
+			move = moveTile(dRIGHT);
+			break;
+
+		case 'q':
+		case 27:
+			return -1;
+			break;
+
+		default:
+			goto input;
+			break;
+		}
+
+		if (win) {
+			wgetch(wn);
+
+			werase(wn);
+
+			mvwprintw(wn, 0, 0, "YOU WIN !!!");
+
+			wgetch(wn);
+			if (gameOver(wn)) {
+				cleanUp();
+				initBoard();
+				return 0;
+			}
+			return 1;
+
+		} else if (!checkMove()) {
+			wgetch(wn);
+
+			werase(wn);
+
+			mvwprintw(wn, 0, 0, "YOU LOSE !!!");
+
+			wgetch(wn);
+
+			if (gameOver(wn)) {
+				cleanUp();
+				initBoard();
+				return 0;
+			}
+			return 1;
+		}
+	}
+
+}
+
+/**
+ * Menu manager.
+ *
+ * @param wn The menu window.
+ */
+void menu(WINDOW* wn) {
+
+	int index = 0;
+	int choice = 0;
+	werase(wn);
+
+	while (1) {
+
+		switch(choice) {
+
+			case KEY_UP:
+				if (index == 0)
+					break;
+				index--;
+				break;
+
+			case KEY_DOWN:
+				if (index == 3)
+					break;
+				index++;
+				break;
+
+			case '\n':
+				switch (index) {
+					case 0:
+						switch(game(wn)) {
+							case -1:
+								start = 1;
+								break;
+
+							case 0:
+								start = 0;
+								score = 0;
+								game(wn);
+								break;
+
+							case 1:
+								break;
+						}
+						werase(wn);
+						break;
+
+					case 1:
+						werase(wn);
+						getHiScore(hs);
+						viewHiScore();
+						break;
+
+					case 2:
+						werase(wn);
+						viewCredit();
+						break;
+
+					case 3:
+						werase(wn);
+						wprintw(wn, "Are you sure ? Y/N");
+
+						ret:;
+						int exitChoice = wgetch(wn);
+						switch(exitChoice) {
+							case 'Y':
+							case 'y':
+								werase(wn);
+								if (score > hs[9].score)
+									storeHiScore(score);
+								werase(wn);
+								mvwprintw(wn, 0, 0, "Goodbye!\nPress any key...");
+								wgetch(wn);
+								cleanUp();
+								echo();
+								endwin();
+								exit(0);
+								break;
+							case 'N':
+							case 'n':
+								werase(wn);
+								break;
+							default:
+								goto ret;
+								break;
+						}
+
+				}
+				break;
+		}
+
+		for (int foo = 0; foo < 4; foo++) {
+			if (foo == index) {
+				wattron(wn, COLOR_PAIR(12));
+				if (foo == 0 && start == 1) {
+					mvwprintw(wn, foo, 0, "%s", menuOpt[4]);
+				} else {
+					mvwprintw(wn, foo, 0, "%s", menuOpt[foo]);
+				}
+				wattroff(wn, COLOR_PAIR(12));
+			} else {
+				if (foo == 0 && start == 1) {
+					mvwprintw(wn, foo, 0, "%s", menuOpt[4]);
+				} else {
+					mvwprintw(wn, foo, 0, "%s", menuOpt[foo]);
+				}
+			}
+		}
+
+		choice = wgetch(wn);
+	}
+}
+
+/**
+ * Cleanup any memory leaks.
+ */
 void cleanUp() {
 
 	for (int x = 0; x < 4; x++)
@@ -320,6 +710,11 @@ void cleanUp() {
 	free(board);
 }
 
+/**
+ * Initialize color.
+ *
+ * @return 1 if terminal doesn't support color. 0 otherwise.
+ */
 int initColor() {
 	if (!has_colors()) {
 		return 1;
@@ -342,144 +737,33 @@ int initColor() {
 	return 0;
 }
 
-void game(WINDOW* wn) {
-
-	int move = 0;
-	while (1) {
-
-		if (move == 0) {
-			spawnTile();
-			drawBoard(wn);
-		}
-
-		input:;
-		char key = wgetch(wn);
-
-		switch (key) {
-
-		case 'w':
-			move = moveTile(dUP);
-			break;
-
-		case 's':
-			move = moveTile(dDOWN);
-			break;
-
-		case 'a':
-			move = moveTile(dLEFT);
-			break;
-
-		case 'd':
-			move = moveTile(dRIGHT);
-			break;
-
-		case 'q':
-		case 27:
-			return;
-			break;
-
-		default:
-			goto input;
-			break;
-		}
-
-		if (!checkMove()) {
-
-			wgetch(wn);
-
-			werase(wn);
-
-			mvwprintw(wn, 0, 0, "YOU LOSE !!!");
-
-			wgetch(wn);
-			mvwprintw(wn, 1, 0, "Try again ? Y/N");
-
-			ret:;
-			char retry = wgetch(wn);
-
-			if (retry == 'y' || retry == 'Y') {
-				setHiScore(score);
-				initBoard();
-				game(wn);
-			} else if (retry == 'n' || retry == 'N'){
-				werase(wn);
-				setHiScore(score);
-				return;
-			} else {
-				goto ret;
-			}
-		}
-	}
-
-}
-
-void menu(WINDOW* wn) {
-
-	char *startGame = "1. Start game", *hiScore = "2. High score";
-	char choice = 'w', enter;
-
-	werase(wn);
-	while (1) {
-		switch(choice){
-
-			case 'w':
-				wattron(wn, COLOR_PAIR(12));
-				mvwprintw(wn, 0, 0,"%s", startGame);
-				wattroff(wn, COLOR_PAIR(12));
-				mvwprintw(wn, 1, 0,"%s", hiScore);
-				break;
-
-			case 's':
-				mvwprintw(wn, 0, 0,"%s", startGame);
-				wattron(wn, COLOR_PAIR(12));
-				mvwprintw(wn, 1, 0,"%s", hiScore);
-				wattroff(wn, COLOR_PAIR(12));
-				break;
-			case '\n':
-				if (enter == 'w') {
-
-					game(wn);
-
-				} else {
-					werase(wn);
-					wprintw(wn, "%d", getHiScore());
-				}
-				break;
-			case 'q':
-			case 27:
-				setHiScore(score);
-				werase(wn);
-				mvwprintw(wn, 0, 0, "Exitting...");
-				wgetch(wn);
-				cleanUp();
-				echo();
-				endwin();
-				exit(0);
-				break;
-
-			default:
-				break;
-
-		}
-
-		enter = choice;
-		choice = wgetch(wn);
-
-	}
-}
-
+/**
+ * Main entry point.
+ *
+ * @param argc The number of CMD arguments.
+ * @param argv The CMD arguments.
+ * @return 1 if there's an error. 0 otherwise.
+ */
 int main(int argc, char **argv) {
 
-	char args = getopt(argc, argv, "h");
+	int args = getopt(argc, argv, "hw:");
 
-	if (args == 'h') {
-		printf("%s\n", usage);
-		exit(0);
+	initHiScore(hs);
+
+	switch (args) {
+		case 'h':
+			printf("%s\n", usage);
+			exit(0);
+			break;
+		case 'w':
+			winGoal = atoi(optarg);
+			break;
+
 	}
 
 	initscr();
 	cbreak();
-	noecho();
+	echo();
 	curs_set(false);
 
 	srand((unsigned int)time(NULL));
